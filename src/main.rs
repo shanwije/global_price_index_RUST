@@ -5,7 +5,7 @@ mod exchanges;
 
 use actix_web::{web, App, HttpServer, Responder, HttpResponse};
 use config::Config;
-use log::info;
+use log::{info, error};
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().body("OK")
@@ -16,7 +16,14 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     env_logger::init();
 
-    let config = Config::from_env().expect("Failed to load configuration");
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(e) => {
+            error!("Failed to load configuration: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
     let redis_pool = config::create_redis_pool(&config);
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);

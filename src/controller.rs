@@ -1,6 +1,7 @@
 use actix_web::{web, Responder, get, HttpResponse};
 use serde::Serialize;
 use crate::service::get_global_price_index;
+use log::error;
 
 #[derive(Serialize)]
 struct AverageMidPriceDto {
@@ -11,7 +12,10 @@ struct AverageMidPriceDto {
 async fn global_price_index(redis_pool: web::Data<deadpool_redis::Pool>) -> impl Responder {
     match get_global_price_index(&redis_pool).await {
         Ok(price) => HttpResponse::Ok().json(AverageMidPriceDto { average_mid_price: price }),
-        Err(_) => HttpResponse::InternalServerError().finish(),
+        Err(e) => {
+            error!("Failed to get global price index: {:?}", e);
+            HttpResponse::InternalServerError().finish()
+        }
     }
 }
 

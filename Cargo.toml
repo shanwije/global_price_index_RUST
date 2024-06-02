@@ -13,3 +13,4 @@ deadpool-redis = "0.10"
 redis = { version = "0.25", features = ["async-std", "aio", "tokio-comp"] }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0.203", features = ["derive"] }
+tokio-retry = "0.3"
