@@ -1,5 +1,6 @@
-use deadpool_redis::{Pool, Runtime};
 use std::env;
+
+use deadpool_redis::{Pool, Runtime};
 
 #[derive(Debug)]
 pub struct Config {

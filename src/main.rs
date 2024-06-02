@@ -1,33 +1,36 @@
-mod config;
-mod controller;
-mod service;
-mod exchanges;
-
-use actix_web::{web, App, HttpServer, Responder, HttpResponse};
-use config::Config;
+use actix_web::{App, HttpServer, web};
+use deadpool_redis::Pool;
+use dotenv::dotenv;
 use log::info;
 
-async fn health_check() -> impl Responder {
-    HttpResponse::Ok().body("OK")
-}
+use crate::config::{Config, create_redis_pool};
+use crate::controller::init_routes;
+use crate::service::AppService;
+
+mod config;
+mod service;
+mod controller;
+mod exchanges;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    dotenv().ok();
     env_logger::init();
 
-    let config = Config::from_env().expect("Failed to load configuration");
-    let redis_pool = config::create_redis_pool(&config);
+    let config = Config::from_env().expect("Failed to load config");
+    let redis_pool = create_redis_pool(&config);
+
+    let app_service = AppService::new(redis_pool.clone());
+    app_service.start_collecting_prices().await;
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(redis_pool.clone()))
-            .route("/health", web::get().to(health_check))
-            .configure(controller::init_routes)
+            .app_data(web::Data::new(app_service.clone()))
+            .configure(init_routes)
     })
-    .bind((config.server_host.as_str(), config.server_port))?
-    .run()
-    .await
+        .bind((config.server_host.as_str(), config.server_port))?
+        .run()
+        .await
 }
