@@ -1,7 +1,6 @@
-use std::error::Error;
-
 use reqwest::Client;
 use serde_json::Value;
+use std::error::Error;
 
 pub struct HuobiService {
     client: Client,
@@ -9,10 +8,10 @@ pub struct HuobiService {
 }
 
 impl HuobiService {
-    pub fn new() -> Self {
+    pub fn new(api_url: &str) -> Self {
         HuobiService {
             client: Client::new(),
-            api_url: "https://api.huobi.pro/market/detail/merged?symbol=btcusdt".to_string(),
+            api_url: api_url.to_string(),
         }
     }
 

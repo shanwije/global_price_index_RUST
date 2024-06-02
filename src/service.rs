@@ -1,12 +1,15 @@
-use std::sync::Arc;
-
-use anyhow::Result;
+use crate::exchanges::{binance::BinanceService, kraken::KrakenService, huobi::HuobiService};
 use deadpool_redis::Pool;
+use log::{error};
 use deadpool_redis::redis::AsyncCommands;
-use log::{debug, error, info};
-use tokio::time::{Duration, sleep};
+use std::sync::Arc;
+use tokio::time::{sleep, Duration};
+use anyhow::Result;
+use crate::config::Config;
 
-use crate::exchanges::{binance::BinanceService, huobi::HuobiService, kraken::KrakenService};
+const BINANCE_PRICE_KEY: &str = "binance_price";
+const KRAKEN_PRICE_KEY: &str = "kraken_price";
+const HUOBI_PRICE_KEY: &str = "huobi_price";
 
 #[derive(Clone)]
 pub struct AppService {
@@ -14,15 +17,17 @@ pub struct AppService {
     kraken_service: Arc<KrakenService>,
     huobi_service: Arc<HuobiService>,
     redis_pool: Pool,
+    config: Arc<Config>,
 }
 
 impl AppService {
-    pub fn new(redis_pool: Pool) -> Self {
+    pub fn new(redis_pool: Pool, config: Arc<Config>) -> Self {
         Self {
-            binance_service: Arc::new(BinanceService::new()),
-            kraken_service: Arc::new(KrakenService::new()),
-            huobi_service: Arc::new(HuobiService::new()),
+            binance_service: Arc::new(BinanceService::new(&config.binance_api_url)),
+            kraken_service: Arc::new(KrakenService::new(&config.kraken_api_url)),
+            huobi_service: Arc::new(HuobiService::new(&config.huobi_api_url)),
             redis_pool,
+            config,
         }
     }
 
@@ -34,12 +39,13 @@ impl AppService {
 
         // Periodic price collection
         let service = self.clone();
+        let interval = self.config.price_collection_interval;
         tokio::spawn(async move {
             loop {
                 if let Err(e) = service.collect_and_store_prices().await {
                     error!("Periodic price collection failed: {:?}", e);
                 }
-                sleep(Duration::from_secs(30)).await;
+                sleep(Duration::from_millis(interval)).await;
             }
         });
     }
@@ -52,13 +58,13 @@ impl AppService {
         let huobi_price = self.huobi_service.get_mid_price().await;
 
         if let Ok(price) = binance_price {
-            redis_conn.set_ex::<&str, f64, ()>("binance_price", price, 60).await?;
+            redis_conn.set_ex::<&str, f64, ()>(BINANCE_PRICE_KEY, price, self.config.cache_expiration_time).await?;
         }
         if let Ok(price) = kraken_price {
-            redis_conn.set_ex::<&str, f64, ()>("kraken_price", price, 60).await?;
+            redis_conn.set_ex::<&str, f64, ()>(KRAKEN_PRICE_KEY, price, self.config.cache_expiration_time).await?;
         }
         if let Ok(price) = huobi_price {
-            redis_conn.set_ex::<&str, f64, ()>("huobi_price", price, 60).await?;
+            redis_conn.set_ex::<&str, f64, ()>(HUOBI_PRICE_KEY, price, self.config.cache_expiration_time).await?;
         }
 
         Ok(())
@@ -68,10 +74,10 @@ impl AppService {
         let mut redis_conn = self.redis_pool.get().await?;
 
         let mut prices = Vec::new();
-        let keys = vec!["binance_price", "kraken_price", "huobi_price"];
+        let keys = vec![BINANCE_PRICE_KEY, KRAKEN_PRICE_KEY, HUOBI_PRICE_KEY];
         let mut attempts = 0;
 
-        while attempts < 10 {
+        while attempts < self.config.max_cache_check_attempts {
             for &key in &keys {
                 if let Ok(price) = redis_conn.get::<&str, f64>(key).await {
                     prices.push(price);
@@ -83,7 +89,7 @@ impl AppService {
             }
 
             attempts += 1;
-            sleep(Duration::from_millis(100)).await;
+            sleep(Duration::from_millis(self.config.cache_check_interval_ms)).await;
         }
 
         if prices.is_empty() {
@@ -91,6 +97,7 @@ impl AppService {
         }
 
         let average_price = prices.iter().sum::<f64>() / prices.len() as f64;
-        Ok(average_price)
+        let rounded_average_price = (average_price * 10000.0).round() / 10000.0;
+        Ok(rounded_average_price)
     }
 }

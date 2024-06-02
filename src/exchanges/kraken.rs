@@ -1,7 +1,6 @@
-use std::error::Error;
-
 use reqwest::Client;
 use serde_json::Value;
+use std::error::Error;
 
 pub struct KrakenService {
     client: Client,
@@ -9,10 +8,10 @@ pub struct KrakenService {
 }
 
 impl KrakenService {
-    pub fn new() -> Self {
+    pub fn new(api_url: &str) -> Self {
         KrakenService {
             client: Client::new(),
-            api_url: "https://api.kraken.com/0/public/Ticker?pair=XXBTZUSD".to_string(),
+            api_url: api_url.to_string(),
         }
     }
 

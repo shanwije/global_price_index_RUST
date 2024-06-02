@@ -1,5 +1,4 @@
 use actix_web::{get, HttpResponse, Responder, web};
-use anyhow::Result;
 use log::{error, info};
 use serde::Serialize;
 

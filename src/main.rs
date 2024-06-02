@@ -1,11 +1,10 @@
 use actix_web::{App, HttpServer, web};
-use deadpool_redis::Pool;
 use dotenv::dotenv;
 use log::info;
-
 use crate::config::{Config, create_redis_pool};
-use crate::controller::init_routes;
 use crate::service::AppService;
+use crate::controller::init_routes;
+use std::sync::Arc;
 
 mod config;
 mod service;
@@ -17,10 +16,10 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::init();
 
-    let config = Config::from_env().expect("Failed to load config");
+    let config = Arc::new(Config::from_env().expect("Failed to load config"));
     let redis_pool = create_redis_pool(&config);
 
-    let app_service = AppService::new(redis_pool.clone());
+    let app_service = AppService::new(redis_pool.clone(), config.clone());
     app_service.start_collecting_prices().await;
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);

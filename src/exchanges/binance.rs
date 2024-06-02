@@ -1,7 +1,6 @@
-use std::error::Error;
-
 use reqwest::Client;
 use serde_json::Value;
+use std::error::Error;
 
 pub struct BinanceService {
     client: Client,
@@ -9,10 +8,10 @@ pub struct BinanceService {
 }
 
 impl BinanceService {
-    pub fn new() -> Self {
+    pub fn new(api_url: &str) -> Self {
         BinanceService {
             client: Client::new(),
-            api_url: "https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT".to_string(),
+            api_url: api_url.to_string(),
         }
     }
 
