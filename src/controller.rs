@@ -19,6 +19,12 @@ async fn global_price_index(redis_pool: web::Data<deadpool_redis::Pool>) -> impl
     }
 }
 
+#[get("/health")]
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok().body("OK")
+}
+
 pub fn init_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(global_price_index);
+    cfg.service(health_check);
 }

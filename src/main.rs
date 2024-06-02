@@ -1,15 +1,7 @@
-mod config;
-mod controller;
-mod service;
-mod exchanges;
-
-use actix_web::{web, App, HttpServer, Responder, HttpResponse};
-use config::Config;
+use actix_web::{web, App, HttpServer};
+use global_price_index::config::Config;
+use global_price_index::controller::init_routes;
 use log::{info, error};
-
-async fn health_check() -> impl Responder {
-    HttpResponse::Ok().body("OK")
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -24,17 +16,16 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    let redis_pool = config::create_redis_pool(&config);
+    let redis_pool = global_price_index::config::create_redis_pool(&config);
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(redis_pool.clone()))
-            .route("/health", web::get().to(health_check))
-            .configure(controller::init_routes)
+            .configure(init_routes)
     })
-    .bind((config.server_host.as_str(), config.server_port))?
-    .run()
-    .await
+        .bind((config.server_host.as_str(), config.server_port))?
+        .run()
+        .await
 }
