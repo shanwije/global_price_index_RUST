@@ -14,11 +14,13 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     let config = Config::from_env().expect("Failed to load configuration");
+    let redis_pool = config::create_redis_pool(&config);
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);
 
-    HttpServer::new(|| {
+    HttpServer::new(move || {
         App::new()
+            .app_data(web::Data::new(redis_pool.clone()))
             .route("/health", web::get().to(health_check))
     })
     .bind((config.server_host.as_str(), config.server_port))?
