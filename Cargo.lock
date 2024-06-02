@@ -1020,6 +1020,7 @@ dependencies = [
  "deadpool-redis",
  "dotenv",
  "env_logger",
+ "flate2",
  "futures-util",
  "log",
  "redis 0.25.4",

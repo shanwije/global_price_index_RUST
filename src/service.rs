@@ -3,7 +3,6 @@ use deadpool_redis::Pool;
 use log::{error, info, debug};
 use deadpool_redis::redis::AsyncCommands;
 use std::sync::Arc;
-
 #[derive(Clone)]
 pub struct AppService {
     binance_service: Arc<BinanceService>,
@@ -58,10 +57,11 @@ impl AppService {
 
                 if !prices.is_empty() {
                     let valid_prices: Vec<f64> = prices.into_iter().filter_map(|price| Some(price)).collect();
+                    info!("prices : {:?}", valid_prices);
                     let average_price: f64 = valid_prices.iter().sum::<f64>() / valid_prices.len() as f64;
 
-                    let mut redis_conn = redis_pool.get().await.unwrap();
-                    redis_conn.set_ex::<&str, f64, ()>("global_price_index", average_price, 60).await.unwrap();
+                    // let mut redis_conn = redis_pool.get().await.unwrap();
+                    // redis_conn.set_ex::<&str, f64, ()>("global_price_index", average_price, 60).await.unwrap();
                     info!("Updated global price index: {}", average_price);
                 }
 

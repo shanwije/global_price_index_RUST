@@ -1,5 +1,4 @@
 use futures_util::StreamExt;
-use log::error;
 use serde::Deserialize;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::protocol::Message;
