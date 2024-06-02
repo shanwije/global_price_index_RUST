@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - REDIS_URL=redis://redis:6379
+      - BINANCE_API_URL=https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT
+      - KRAKEN_API_URL=https://api.kraken.com/0/public/Ticker?pair=XXBTZUSD
+      - HUOBI_API_URL=https://api.huobi.pro/market/detail/merged?symbol=btcusdt
+      - PRICE_COLLECTION_INTERVAL=100
+      - CACHE_EXPIRATION_TIME=1
+      - CACHE_CHECK_INTERVAL_MS=100
+      - MAX_CACHE_CHECK_ATTEMPTS=10
+      - RUST_LOG=info
+
+  redis:
+    image: "redis:latest"
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
