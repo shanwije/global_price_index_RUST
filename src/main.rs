@@ -1,4 +1,7 @@
 mod config;
+mod controller;
+mod service;
+mod exchanges;
 
 use actix_web::{web, App, HttpServer, Responder, HttpResponse};
 use config::Config;
@@ -22,6 +25,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(redis_pool.clone()))
             .route("/health", web::get().to(health_check))
+            .configure(controller::init_routes)
     })
     .bind((config.server_host.as_str(), config.server_port))?
     .run()

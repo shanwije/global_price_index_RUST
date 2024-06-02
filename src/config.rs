@@ -1,4 +1,4 @@
-use deadpool_redis::Pool;
+use deadpool_redis::{Pool, Runtime};
 use std::env;
 
 #[derive(Debug)]
@@ -21,7 +21,7 @@ impl Config {
 
 pub fn create_redis_pool(config: &Config) -> Pool {
     let pool = deadpool_redis::Config::from_url(&config.redis_url)
-        .create_pool(None)
+        .create_pool(Some(Runtime::Tokio1))
         .expect("Cannot create Redis pool");
     pool
 }
