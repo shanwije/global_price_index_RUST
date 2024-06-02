@@ -2,6 +2,7 @@ mod config;
 
 use actix_web::{web, App, HttpServer, Responder, HttpResponse};
 use config::Config;
+use log::info;
 
 async fn health_check() -> impl Responder {
     HttpResponse::Ok().body("OK")
@@ -9,7 +10,12 @@ async fn health_check() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let config = Config::from_env().expect("Failed to load config");
+    dotenv::dotenv().ok();
+    env_logger::init();
+
+    let config = Config::from_env().expect("Failed to load configuration");
+
+    info!("Starting server at {}:{}", config.server_host, config.server_port);
 
     HttpServer::new(|| {
         App::new()
