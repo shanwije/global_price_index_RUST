@@ -60,8 +60,8 @@ impl AppService {
                     info!("prices : {:?}", valid_prices);
                     let average_price: f64 = valid_prices.iter().sum::<f64>() / valid_prices.len() as f64;
 
-                    // let mut redis_conn = redis_pool.get().await.unwrap();
-                    // redis_conn.set_ex::<&str, f64, ()>("global_price_index", average_price, 60).await.unwrap();
+                    let mut redis_conn = redis_pool.get().await.unwrap();
+                    redis_conn.set_ex::<&str, f64, ()>("global_price_index", average_price, 1).await.unwrap();
                     info!("Updated global price index: {}", average_price);
                 }
 
