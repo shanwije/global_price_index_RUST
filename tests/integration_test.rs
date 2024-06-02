@@ -1,4 +1,5 @@
-use actix_web::{test, App};
+use actix_web::{App, test};
+
 use global_price_index::{config::create_redis_pool, controller::init_routes, service::AppService};
 
 #[actix_rt::test]

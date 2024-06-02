@@ -1,32 +1,33 @@
-use actix_web::{web, App, HttpServer};
-use global_price_index::{config::Config, controller::init_routes, service::AppService};
-use log::{info, error};
-use env_logger;
+use actix_web::{App, HttpServer, web};
+use deadpool_redis::Pool;
+use dotenv::dotenv;
+use log::info;
+
+use crate::config::{Config, create_redis_pool};
+use crate::controller::init_routes;
+use crate::service::AppService;
+
+mod config;
+mod service;
+mod controller;
+mod exchanges;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
+    dotenv().ok();
     env_logger::init();
 
-    let config = match Config::from_env() {
-        Ok(config) => config,
-        Err(e) => {
-            error!("Failed to load configuration: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let config = Config::from_env().expect("Failed to load config");
+    let redis_pool = create_redis_pool(&config);
 
-    let redis_pool = global_price_index::config::create_redis_pool(&config);
     let app_service = AppService::new(redis_pool.clone());
-
-    tokio::spawn(app_service.clone().start_collecting_prices());
+    app_service.start_collecting_prices().await;
 
     info!("Starting server at {}:{}", config.server_host, config.server_port);
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_service.clone()))
-            .app_data(web::Data::new(redis_pool.clone()))
             .configure(init_routes)
     })
         .bind((config.server_host.as_str(), config.server_port))?

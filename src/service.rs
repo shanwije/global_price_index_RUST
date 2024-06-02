@@ -1,8 +1,13 @@
-use crate::exchanges::{binance::BinanceService, kraken::KrakenService, huobi::HuobiService};
-use deadpool_redis::Pool;
-use log::{error, info, debug};
-use deadpool_redis::redis::AsyncCommands;
 use std::sync::Arc;
+
+use anyhow::Result;
+use deadpool_redis::Pool;
+use deadpool_redis::redis::AsyncCommands;
+use log::{debug, error, info};
+use tokio::time::{Duration, sleep};
+
+use crate::exchanges::{binance::BinanceService, huobi::HuobiService, kraken::KrakenService};
+
 #[derive(Clone)]
 pub struct AppService {
     binance_service: Arc<BinanceService>,
@@ -21,68 +26,71 @@ impl AppService {
         }
     }
 
-    pub async fn start_collecting_prices(self) {
-        let binance_service = self.binance_service.clone();
-        let kraken_service = self.kraken_service.clone();
-        let huobi_service = self.huobi_service.clone();
-        let redis_pool = self.redis_pool.clone();
+    pub async fn start_collecting_prices(&self) {
+        // Immediate price collection on startup
+        if let Err(e) = self.collect_and_store_prices().await {
+            error!("Initial price collection failed: {:?}", e);
+        }
 
+        // Periodic price collection
+        let service = self.clone();
         tokio::spawn(async move {
             loop {
-                let mut prices = vec![];
-
-                match binance_service.get_mid_price().await {
-                    Ok(price) => {
-                        debug!("Binance price: {}", price);
-                        prices.push(price);
-                    },
-                    Err(err) => error!("Binance service failed: {:?}", err),
+                if let Err(e) = service.collect_and_store_prices().await {
+                    error!("Periodic price collection failed: {:?}", e);
                 }
-
-                match kraken_service.get_mid_price().await {
-                    Ok(price) => {
-                        debug!("Kraken price: {}", price);
-                        prices.push(price);
-                    },
-                    Err(err) => error!("Kraken service failed: {:?}", err),
-                }
-
-                match huobi_service.get_mid_price().await {
-                    Ok(price) => {
-                        debug!("Huobi price: {}", price);
-                        prices.push(price);
-                    },
-                    Err(err) => error!("Huobi service failed: {:?}", err),
-                }
-
-                if !prices.is_empty() {
-                    let valid_prices: Vec<f64> = prices.into_iter().filter_map(|price| Some(price)).collect();
-                    info!("prices : {:?}", valid_prices);
-                    let average_price: f64 = valid_prices.iter().sum::<f64>() / valid_prices.len() as f64;
-
-                    let mut redis_conn = redis_pool.get().await.unwrap();
-                    redis_conn.set_ex::<&str, f64, ()>("global_price_index", average_price, 1).await.unwrap();
-                    info!("Updated global price index: {}", average_price);
-                }
-
-                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+                sleep(Duration::from_secs(30)).await;
             }
         });
     }
 
-    pub async fn get_average_mid_price(&self) -> Result<f64, Box<dyn std::error::Error>> {
+    async fn collect_and_store_prices(&self) -> Result<()> {
         let mut redis_conn = self.redis_pool.get().await?;
-        let cache_key = "global_price_index";
 
-        match redis_conn.get::<&str, f64>(cache_key).await {
-            Ok(price) => {
-                info!("Cache hit for global price index");
-                Ok(price)
-            },
-            Err(e) => {
-                error!("Failed to get price from cache: {:?}", e);
-                Err(Box::new(e))
-            }
+        let binance_price = self.binance_service.get_mid_price().await;
+        let kraken_price = self.kraken_service.get_mid_price().await;
+        let huobi_price = self.huobi_service.get_mid_price().await;
+
+        if let Ok(price) = binance_price {
+            redis_conn.set_ex::<&str, f64, ()>("binance_price", price, 60).await?;
         }
+        if let Ok(price) = kraken_price {
+            redis_conn.set_ex::<&str, f64, ()>("kraken_price", price, 60).await?;
+        }
+        if let Ok(price) = huobi_price {
+            redis_conn.set_ex::<&str, f64, ()>("huobi_price", price, 60).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_average_mid_price(&self) -> Result<f64> {
+        let mut redis_conn = self.redis_pool.get().await?;
+
+        let mut prices = Vec::new();
+        let keys = vec!["binance_price", "kraken_price", "huobi_price"];
+        let mut attempts = 0;
+
+        while attempts < 10 {
+            for &key in &keys {
+                if let Ok(price) = redis_conn.get::<&str, f64>(key).await {
+                    prices.push(price);
+                }
+            }
+
+            if prices.len() == keys.len() {
+                break;
+            }
+
+            attempts += 1;
+            sleep(Duration::from_millis(100)).await;
+        }
+
+        if prices.is_empty() {
+            return Err(anyhow::anyhow!("No prices available in cache"));
+        }
+
+        let average_price = prices.iter().sum::<f64>() / prices.len() as f64;
+        Ok(average_price)
     }
 }

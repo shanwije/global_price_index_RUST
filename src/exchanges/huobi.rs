@@ -1,61 +1,38 @@
-use futures_util::{StreamExt, SinkExt};
-use log::error;
-use serde::Deserialize;
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
-use flate2::read::GzDecoder;
-use std::io::Read;
+use std::error::Error;
 
-#[derive(Deserialize)]
-struct HuobiTick {
-    bids: Vec<Vec<f64>>,
-    asks: Vec<Vec<f64>>,
+use reqwest::Client;
+use serde_json::Value;
+
+pub struct HuobiService {
+    client: Client,
+    api_url: String,
 }
-
-#[derive(Deserialize)]
-struct HuobiResponse {
-    tick: HuobiTick,
-}
-
-pub struct HuobiService;
 
 impl HuobiService {
     pub fn new() -> Self {
-        Self
+        HuobiService {
+            client: Client::new(),
+            api_url: "https://api.huobi.pro/market/detail/merged?symbol=btcusdt".to_string(),
+        }
     }
 
-    pub async fn get_mid_price(&self) -> Result<f64, Box<dyn std::error::Error>> {
-        let (mut socket, _) = connect_async("wss://api.huobi.pro/ws").await?;
-        let subscribe_message = r#"
-            {
-                "sub": "market.btcusdt.depth.step0",
-                "id": "id1"
-            }
-        "#;
-        socket.send(Message::Text(subscribe_message.to_string())).await?;
+    pub async fn get_mid_price(&self) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        self.calculate_mid_price_snapshot().await
+    }
 
-        while let Some(Ok(message)) = socket.next().await {
-            if let Message::Binary(bin_msg) = message {
-                let mut d = GzDecoder::new(&bin_msg[..]);
-                let mut s = String::new();
-                d.read_to_string(&mut s)?;
+    async fn calculate_mid_price_snapshot(&self) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        let response = self.client.get(&self.api_url).send().await?;
+        let body = response.text().await?;
+        let json: Value = serde_json::from_str(&body)?;
 
-                if s.contains("ping") {
-                    let pong_msg = s.replace("ping", "pong");
-                    socket.send(Message::Text(pong_msg)).await?;
-                } else if s.contains("tick") {
-                    let response: HuobiResponse = serde_json::from_str(&s)?;
-                    if let Some(bid) = response.tick.bids.first() {
-                        if let Some(ask) = response.tick.asks.first() {
-                            let mid_price = (bid[0] + ask[0]) / 2.0;
-                            return Ok(mid_price);
-                        }
-                    }
-                } else {
-                    error!("Unexpected message format: {}", s);
-                }
-            }
-        }
+        let ask = json["tick"]["ask"][0]
+            .as_f64()
+            .ok_or("Failed to get ask price")?;
+        let bid = json["tick"]["bid"][0]
+            .as_f64()
+            .ok_or("Failed to get bid price")?;
 
-        Err("Invalid message format".into())
+        let mid_price = (ask + bid) / 2.0;
+        Ok(mid_price)
     }
 }

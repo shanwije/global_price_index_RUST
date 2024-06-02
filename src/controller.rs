@@ -1,7 +1,9 @@
-use actix_web::{web, Responder, get, HttpResponse};
-use serde::Serialize;
-use crate::service::AppService;
+use actix_web::{get, HttpResponse, Responder, web};
+use anyhow::Result;
 use log::{error, info};
+use serde::Serialize;
+
+use crate::service::AppService;
 
 #[derive(Serialize)]
 struct AverageMidPriceDto {

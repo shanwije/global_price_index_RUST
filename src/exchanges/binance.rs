@@ -1,29 +1,40 @@
-use futures_util::StreamExt;
-use serde::Deserialize;
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::tungstenite::protocol::Message;
+use std::error::Error;
 
-#[derive(Deserialize)]
-struct BinanceResponse {
-    b: String,
-    a: String,
+use reqwest::Client;
+use serde_json::Value;
+
+pub struct BinanceService {
+    client: Client,
+    api_url: String,
 }
-
-pub struct BinanceService;
 
 impl BinanceService {
     pub fn new() -> Self {
-        Self
+        BinanceService {
+            client: Client::new(),
+            api_url: "https://api.binance.com/api/v3/ticker/bookTicker?symbol=BTCUSDT".to_string(),
+        }
     }
 
-    pub async fn get_mid_price(&self) -> Result<f64, Box<dyn std::error::Error>> {
-        let (mut socket, _) = connect_async("wss://stream.binance.com:9443/ws/btcusdt@bookTicker").await?;
-        if let Some(Ok(Message::Text(text))) = socket.next().await {
-            let response: BinanceResponse = serde_json::from_str(&text)?;
-            let bid_price: f64 = response.b.parse()?;
-            let ask_price: f64 = response.a.parse()?;
-            return Ok((bid_price + ask_price) / 2.0);
-        }
-        Err("Invalid message format".into())
+    pub async fn get_mid_price(&self) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        self.calculate_mid_price_snapshot().await
+    }
+
+    async fn calculate_mid_price_snapshot(&self) -> Result<f64, Box<dyn Error + Send + Sync>> {
+        let response = self.client.get(&self.api_url).send().await?;
+        let body = response.text().await?;
+        let json: Value = serde_json::from_str(&body)?;
+
+        let ask = json["askPrice"]
+            .as_str()
+            .ok_or("Failed to get ask price")?
+            .parse::<f64>()?;
+        let bid = json["bidPrice"]
+            .as_str()
+            .ok_or("Failed to get bid price")?
+            .parse::<f64>()?;
+
+        let mid_price = (ask + bid) / 2.0;
+        Ok(mid_price)
     }
 }
